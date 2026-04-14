@@ -291,7 +291,7 @@ async function main() {
     ],
   })
 
-  // ── BERLIN CASES (medium — some problems, mixed performance) ──────────────
+  // ── BERLIN CASES (failing TL — severely neglected queue) ─────────────────
 
   const be001 = await prisma.case.create({
     data: {
@@ -306,24 +306,26 @@ async function main() {
       category: 'Heating',
       priority: 'CRITICAL',
       status: 'IN_PROGRESS',
-      escalationLevel: 2,
-      openedAt: d(4),
-      firstResponseAt: null, // ← No response yet! SLA = 2h
-      lastCustomerMessageAt: h(12),
+      escalationLevel: 3,
+      openedAt: d(10),
+      firstResponseAt: null, // 10 days, NO reply. SLA was 2h.
+      lastCustomerMessageAt: h(4),
       lastInternalUpdateAt: null,
-      repeatFollowUpCount: 2,
+      repeatFollowUpCount: 5,
       slaFirstResponseHours: 2,
       slaResolutionHours: 24,
-      aiSummary: 'Kompletter Heizungsausfall. Mieter hat bereits dreimal nachgefragt. Keine interne Reaktion bisher.',
+      aiSummary: 'Heizungsausfall KRITISCH. Kein Reply nach 10 Tagen (SLA: 2h). Mieter hat 5 mal nachgefragt. Familie mit kranker Mutter. Rechtliche Schritte angekündigt.',
       isOverdue: true,
-      needsHQAttention: false,
+      needsHQAttention: true,
     },
   })
   await prisma.message.createMany({
     data: [
-      { caseId: be001.id, direction: 'INBOUND', from: 'michael.braun@gmx.de', to: 'cases@berlin-residenz.de', subject: 'Heizungsausfall – komplette Wohnung ohne Heizung', bodyText: 'Sehr geehrte Damen und Herren, seit heute Morgen ist die Heizung in meiner gesamten Wohnung ausgefallen. Es sind nur 14 Grad – bitte dringend um Hilfe!\n\nM. Braun, Wohnung 15', sentAt: d(4) },
-      { caseId: be001.id, direction: 'INBOUND', from: 'michael.braun@gmx.de', to: 'cases@berlin-residenz.de', subject: 'Re: Heizungsausfall – immer noch kein Feedback!', bodyText: 'Es ist jetzt der zweite Tag ohne Heizung. Ich habe eine Kranke Mutter zuhause. Bitte melden Sie sich sofort!\n\nM. Braun', sentAt: d(2) },
-      { caseId: be001.id, direction: 'INBOUND', from: 'michael.braun@gmx.de', to: 'cases@berlin-residenz.de', subject: 'Re: Heizung – dritte Anfrage, keine Reaktion!', bodyText: 'Das ist absolut inakzeptabel. 4 Tage ohne Heizung und keine einzige Antwort. Ich ziehe rechtliche Schritte in Betracht.\n\nM. Braun', sentAt: h(12) },
+      { caseId: be001.id, direction: 'INBOUND', from: 'michael.braun@gmx.de', to: 'cases@berlin-residenz.de', subject: 'Heizungsausfall – komplette Wohnung ohne Heizung', bodyText: 'Sehr geehrte Damen und Herren, seit heute Morgen ist die Heizung in meiner gesamten Wohnung ausgefallen. Es sind nur 14 Grad – bitte dringend um Hilfe!\n\nM. Braun, Wohnung 15', sentAt: d(10) },
+      { caseId: be001.id, direction: 'INBOUND', from: 'michael.braun@gmx.de', to: 'cases@berlin-residenz.de', subject: 'Re: Heizung – Tag 2, keine Antwort', bodyText: 'Immer noch keine Heizung. Ich habe eine kranke Mutter zuhause. Bitte sofort melden!\n\nM. Braun', sentAt: d(8) },
+      { caseId: be001.id, direction: 'INBOUND', from: 'michael.braun@gmx.de', to: 'cases@berlin-residenz.de', subject: 'Re: Heizung – Tag 5, dritte Anfrage', bodyText: 'Das ist absolut inakzeptabel. 5 Tage ohne Heizung. Ich ziehe rechtliche Schritte in Betracht.\n\nM. Braun', sentAt: d(5) },
+      { caseId: be001.id, direction: 'INBOUND', from: 'michael.braun@gmx.de', to: 'cases@berlin-residenz.de', subject: 'Re: Heizung – letzte Aufforderung vor Klage', bodyText: 'Ich habe einen Anwalt kontaktiert. Wenn ich heute keine Reaktion erhalte, wird mietrechtlich vorgegangen. Der Schaden durch Heizungskosten wird von Ihnen gefordert.\n\nM. Braun', sentAt: d(2) },
+      { caseId: be001.id, direction: 'INBOUND', from: 'michael.braun@gmx.de', to: 'cases@berlin-residenz.de', subject: 'Re: Heizung – Fristablauf heute Abend', bodyText: 'Frist läuft heute Abend ab. Noch immer keine Antwort von Ihnen. 10 Tage ohne Heizung, 5 Nachrichten – keine einzige Reaktion. M. Braun', sentAt: h(4) },
     ],
   })
 
@@ -407,15 +409,15 @@ async function main() {
       category: 'Complaint',
       priority: 'HIGH',
       status: 'IN_PROGRESS',
-      escalationLevel: 1,
-      openedAt: d(6),
-      firstResponseAt: d(5, 18),
-      lastCustomerMessageAt: d(1),
-      lastInternalUpdateAt: d(4),
-      repeatFollowUpCount: 2,
+      escalationLevel: 2,
+      openedAt: d(12),
+      firstResponseAt: d(11, 18),
+      lastCustomerMessageAt: h(3),
+      lastInternalUpdateAt: d(8),
+      repeatFollowUpCount: 4,
       slaFirstResponseHours: 8,
       slaResolutionHours: 72,
-      aiSummary: 'Wiederholte Lärmbelästigung durch Nachbarn in Wohnung 8. Zweimal nachgefragt ohne finale Lösung.',
+      aiSummary: 'Lärmbelästigung seit 12 Tagen ungelöst. 4 Follow-ups. Abmahnung wurde verschickt, aber Problem besteht. Letztes internes Update vor 8 Tagen.',
       isOverdue: true,
       needsHQAttention: false,
     },
@@ -507,17 +509,17 @@ async function main() {
       category: 'Complaint',
       priority: 'HIGH',
       status: 'IN_PROGRESS',
-      escalationLevel: 2,
-      openedAt: d(8),
-      firstResponseAt: d(7, 6),
-      lastCustomerMessageAt: h(12),
-      lastInternalUpdateAt: d(4),
-      repeatFollowUpCount: 3,
+      escalationLevel: 3,
+      openedAt: d(16),
+      firstResponseAt: d(15, 6),
+      lastCustomerMessageAt: h(5),
+      lastInternalUpdateAt: d(10),
+      repeatFollowUpCount: 6,
       slaFirstResponseHours: 8,
       slaResolutionHours: 72,
-      aiSummary: 'Schimmel im Badezimmer seit 8 Tagen. Drei Nachfragen ohne Lösung. Techniker hat bisher nicht reagiert.',
+      aiSummary: 'Schwarzschimmel Badezimmer seit 16 Tagen. 6 Nachfragen, kein Gutachter erschienen. Letztes internes Update vor 10 Tagen. Mieterverein wurde eingeschaltet.',
       isOverdue: true,
-      needsHQAttention: false,
+      needsHQAttention: true,
     },
   })
   await prisma.message.createMany({
@@ -578,24 +580,26 @@ async function main() {
       priority: 'CRITICAL',
       status: 'IN_PROGRESS',
       escalationLevel: 3,
-      openedAt: d(9),
-      firstResponseAt: null, // No response in 9 days! CRITICAL
-      lastCustomerMessageAt: d(1),
+      openedAt: d(20),
+      firstResponseAt: null, // 20 days, ZERO reply. CRITICAL safety issue.
+      lastCustomerMessageAt: h(2),
       lastInternalUpdateAt: null,
-      repeatFollowUpCount: 3,
+      repeatFollowUpCount: 6,
       slaFirstResponseHours: 2,
       slaResolutionHours: 24,
-      aiSummary: '⚠ KRITISCH: Balkongeländer gerissen, Sturzgefahr. Keinerlei interne Reaktion in 9 Tagen. HQ-Aufmerksamkeit erforderlich.',
+      aiSummary: 'Balkongeländer Sturzgefahr – 20 Tage, null Reaktion vom Team. SLA war 2h. Mieter hat Ordnungsamt und Anwalt eingeschaltet. Haftungsrisiko.',
       isOverdue: true,
       needsHQAttention: true,
     },
   })
   await prisma.message.createMany({
     data: [
-      { caseId: be009.id, direction: 'INBOUND', from: 'stefan.lange@gmx.net', to: 'cases@berlin-residenz.de', subject: 'Balkongeländer gerissen – akute Sturzgefahr', bodyText: 'DRINGEND: Das Balkongeländer meiner Wohnung (4. OG) ist an zwei Stellen gerissen. Ich wage es nicht mehr, auf den Balkon zu gehen. Das ist eine akute Sturzgefahr! Bitte sofort reagieren! S. Lange', sentAt: d(9) },
-      { caseId: be009.id, direction: 'INBOUND', from: 'stefan.lange@gmx.net', to: 'cases@berlin-residenz.de', subject: 'Re: Balkongeländer – 4 Tage keine Antwort', bodyText: 'Ich habe nun 4 Tage gewartet. Das Geländer ist nach wie vor defekt und niemand hat sich gemeldet. Das ist grob fahrlässig! S. Lange', sentAt: d(5) },
-      { caseId: be009.id, direction: 'INBOUND', from: 'stefan.lange@gmx.net', to: 'cases@berlin-residenz.de', subject: 'Re: Balkongeländer – ich erstatte Anzeige', bodyText: 'Das ist meine dritte Nachricht. 9 Tage, keine Reaktion. Ich werde jetzt das Ordnungsamt und einen Rechtsanwalt einschalten. S. Lange', sentAt: d(1) },
-      { caseId: be009.id, direction: 'INBOUND', from: 'stefan.lange@gmx.net', to: 'cases@berlin-residenz.de', subject: 'Re: LETZTE WARNUNG', bodyText: 'Letzter Versuch vor der Anzeige. Bitte melden Sie sich noch heute. S. Lange', sentAt: h(6) },
+      { caseId: be009.id, direction: 'INBOUND', from: 'stefan.lange@gmx.net', to: 'cases@berlin-residenz.de', subject: 'Balkongeländer gerissen – akute Sturzgefahr', bodyText: 'DRINGEND: Das Balkongeländer meiner Wohnung (4. OG) ist an zwei Stellen gerissen. Ich wage es nicht mehr auf den Balkon zu gehen. Das ist eine akute Sturzgefahr! Bitte sofort reagieren! S. Lange', sentAt: d(20) },
+      { caseId: be009.id, direction: 'INBOUND', from: 'stefan.lange@gmx.net', to: 'cases@berlin-residenz.de', subject: 'Re: Balkongeländer – Woche 1 keine Antwort', bodyText: 'Eine Woche vergangen. Keinerlei Reaktion. Das ist grob fahrlässig. S. Lange', sentAt: d(13) },
+      { caseId: be009.id, direction: 'INBOUND', from: 'stefan.lange@gmx.net', to: 'cases@berlin-residenz.de', subject: 'Re: Balkongeländer – Ordnungsamt informiert', bodyText: 'Ich habe das Ordnungsamt informiert. Außerdem liegt mein Anwalt auf Abruf. Ich gebe Ihnen noch bis Freitag. S. Lange', sentAt: d(8) },
+      { caseId: be009.id, direction: 'INBOUND', from: 'stefan.lange@gmx.net', to: 'cases@berlin-residenz.de', subject: 'Re: Balkongeländer – Klage eingereicht', bodyText: 'Der Anwalt hat heute die Klage auf Mängelbeseitigung eingereicht. Außerdem wird Schadensersatz wegen Gefahrenvernachlässigung gefordert. 14 Tage, 4 Nachrichten, null Reaktion. S. Lange', sentAt: d(5) },
+      { caseId: be009.id, direction: 'INBOUND', from: 'stefan.lange@gmx.net', to: 'cases@berlin-residenz.de', subject: 'Re: Balkongeländer – lokale Presse informiert', bodyText: 'Ich habe jetzt auch die lokale Presse kontaktiert. S. Lange', sentAt: d(2) },
+      { caseId: be009.id, direction: 'INBOUND', from: 'stefan.lange@gmx.net', to: 'cases@berlin-residenz.de', subject: 'Re: Balkongeländer – heute 20 Tage', bodyText: '20 Tage. Immer noch kein einziges Wort von Ihnen. Das Geländer ist noch immer nicht repariert. S. Lange', sentAt: h(2) },
     ],
   })
 
