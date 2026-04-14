@@ -8,23 +8,17 @@ import { PriorityBadge } from '@/components/badges/priority-badge'
 import { StatusBadge } from '@/components/badges/status-badge'
 import { formatDateTime } from '@/lib/utils'
 import { cn } from '@/lib/utils'
-import {
-  AlertTriangle,
-  Clock,
-  RefreshCw,
-  Users,
-  CheckSquare,
-} from 'lucide-react'
+import { AlertTriangle, Clock, RefreshCw, Users, CheckSquare } from 'lucide-react'
 
 export const dynamic = 'force-dynamic'
 
-function waitingLabel(ms: number): string {
+function warteZeit(ms: number): string {
   const h = ms / 3_600_000
   if (h < 1) return `${Math.round(h * 60)}m`
   if (h < 24) return `${Math.round(h)}h`
   const d = Math.floor(h / 24)
   const rem = Math.round(h % 24)
-  return rem > 0 ? `${d}d ${rem}h` : `${d}d`
+  return rem > 0 ? `${d}T ${rem}h` : `${d}T`
 }
 
 export default async function TeamLeadPage() {
@@ -35,7 +29,7 @@ export default async function TeamLeadPage() {
     return (
       <Shell user={user} activePath="/team-lead">
         <div className="p-8">
-          <p className="text-slate-500">No portco assigned to your account.</p>
+          <p className="text-slate-500">Kein Portco zugewiesen.</p>
         </div>
       </Shell>
     )
@@ -44,74 +38,64 @@ export default async function TeamLeadPage() {
   const now = new Date()
   const portco = await prisma.portco.findUnique({ where: { id: user.portcoId } })
 
-  const openCases = await prisma.case.findMany({
+  const offeneAnfragen = await prisma.case.findMany({
     where: { portcoId: user.portcoId, status: { not: 'RESOLVED' } },
     orderBy: [{ priority: 'asc' }, { openedAt: 'asc' }],
   })
 
-  const allCases = await prisma.case.findMany({
+  const alleAnfragen = await prisma.case.findMany({
     where: { portcoId: user.portcoId },
     orderBy: [{ openedAt: 'desc' }],
     take: 100,
   })
 
-  // ── Overdue: No reply sent yet, past first-response SLA ──────────────────
-  // This is the most critical queue: customer is waiting, no one has replied.
-  const noReplySent = openCases.filter((c) => !c.firstResponseAt)
-  const noReplyOverdue = noReplySent.filter((c) => {
-    const waitingHours =
-      (now.getTime() - c.lastCustomerMessageAt.getTime()) / 3_600_000
-    return waitingHours > c.slaFirstResponseHours
+  // ── Überfällig: Keine Antwort gesendet, SLA abgelaufen ───────────────────
+  const keineAntwort = offeneAnfragen.filter((c) => !c.firstResponseAt)
+  const keineAntwortUeberfaellig = keineAntwort.filter((c) => {
+    const stunden = (now.getTime() - c.lastCustomerMessageAt.getTime()) / 3_600_000
+    return stunden > c.slaFirstResponseHours
   })
-  // Not yet overdue but clock is running
-  const noReplyPending = noReplySent.filter(
-    (c) => !noReplyOverdue.includes(c)
+  const keineAntwortInFrist = keineAntwort.filter(
+    (c) => !keineAntwortUeberfaellig.includes(c)
   )
 
-  // ── Overdue: Problem unresolved past resolution deadline ─────────────────
-  // A reply was sent, but the issue hasn't been fixed within the SLA window.
-  const resolutionOverdue = openCases.filter((c) => {
-    if (!c.firstResponseAt) return false // Covered above
-    const hoursOpen = (now.getTime() - c.openedAt.getTime()) / 3_600_000
-    return hoursOpen > c.slaResolutionHours
+  // ── Überfällig: Problem nicht gelöst nach Fristablauf ────────────────────
+  const loesungUeberfaellig = offeneAnfragen.filter((c) => {
+    if (!c.firstResponseAt) return false
+    const stundenOffen = (now.getTime() - c.openedAt.getTime()) / 3_600_000
+    return stundenOffen > c.slaResolutionHours
   })
 
-  // ── Worth watching ───────────────────────────────────────────────────────
-  // Customer has followed up 2+ times without a final resolution
-  const repeatFollowUps = openCases.filter(
-    (c) => c.repeatFollowUpCount >= 2
-  )
-  // No internal update in 48h (team has gone quiet on an active case)
-  const teamQuiet = openCases.filter((c) => {
-    if (!c.firstResponseAt) return false // Already in no-reply queue
-    const lastTouch = c.lastInternalUpdateAt ?? c.openedAt
-    return (
-      (now.getTime() - lastTouch.getTime()) / 3_600_000 > 48
-    )
+  // ── Beobachten ───────────────────────────────────────────────────────────
+  const mehrfachNachgefragt = offeneAnfragen.filter((c) => c.repeatFollowUpCount >= 2)
+  const teamStumm = offeneAnfragen.filter((c) => {
+    if (!c.firstResponseAt) return false
+    const letzterKontakt = c.lastInternalUpdateAt ?? c.openedAt
+    return (now.getTime() - letzterKontakt.getTime()) / 3_600_000 > 48
   })
 
-  // ── Internal owner breakdown ─────────────────────────────────────────────
-  const ownerMap = new Map<
+  // ── Zuständiger Mitarbeiter ──────────────────────────────────────────────
+  const mitarbeiterMap = new Map<
     string,
-    { total: number; noReply: number; quiet: number; overdue: number }
+    { gesamt: number; keineAntwort: number; stumm: number; ueberfaellig: number }
   >()
-  for (const c of openCases) {
-    const key = c.assignedInternalOwnerName ?? '(Unassigned)'
-    if (!ownerMap.has(key)) {
-      ownerMap.set(key, { total: 0, noReply: 0, quiet: 0, overdue: 0 })
+  for (const c of offeneAnfragen) {
+    const key = c.assignedInternalOwnerName ?? '(Nicht zugewiesen)'
+    if (!mitarbeiterMap.has(key)) {
+      mitarbeiterMap.set(key, { gesamt: 0, keineAntwort: 0, stumm: 0, ueberfaellig: 0 })
     }
-    const e = ownerMap.get(key)!
-    e.total++
-    if (!c.firstResponseAt) e.noReply++
-    const lastTouch = c.lastInternalUpdateAt ?? c.openedAt
-    if ((now.getTime() - lastTouch.getTime()) / 3_600_000 > 48) e.quiet++
-    if (c.isOverdue) e.overdue++
+    const e = mitarbeiterMap.get(key)!
+    e.gesamt++
+    if (!c.firstResponseAt) e.keineAntwort++
+    const letzterKontakt = c.lastInternalUpdateAt ?? c.openedAt
+    if ((now.getTime() - letzterKontakt.getTime()) / 3_600_000 > 48) e.stumm++
+    if (c.isOverdue) e.ueberfaellig++
   }
-  const ownerRows = Array.from(ownerMap.entries()).sort(
-    (a, b) => b[1].noReply - a[1].noReply || b[1].quiet - a[1].quiet
+  const mitarbeiterZeilen = Array.from(mitarbeiterMap.entries()).sort(
+    (a, b) => b[1].keineAntwort - a[1].keineAntwort || b[1].stumm - a[1].stumm
   )
 
-  const totalOverdue = noReplyOverdue.length + resolutionOverdue.length
+  const gesamtUeberfaellig = keineAntwortUeberfaellig.length + loesungUeberfaellig.length
 
   return (
     <Shell user={user} activePath="/team-lead">
@@ -120,185 +104,178 @@ export default async function TeamLeadPage() {
         <div className="mb-8">
           <h1 className="text-xl font-bold text-slate-900">{portco?.name}</h1>
           <p className="text-sm text-slate-500 mt-1">
-            Service queue — {openCases.length} open case
-            {openCases.length !== 1 ? 's' : ''}
-            {totalOverdue > 0 && (
+            Servicewarteschlange — {offeneAnfragen.length} offene Anfrage
+            {offeneAnfragen.length !== 1 ? 'n' : ''}
+            {gesamtUeberfaellig > 0 && (
               <span className="ml-2 text-red-600 font-semibold">
-                · {totalOverdue} overdue
+                · {gesamtUeberfaellig} überfällig
               </span>
             )}
           </p>
         </div>
 
-        {/* KPIs */}
+        {/* KPI-Kacheln */}
         <div className="grid grid-cols-4 gap-4 mb-8">
           <KpiCard
-            label="No Reply Sent"
-            value={noReplySent.length}
+            label="Keine Antwort gesendet"
+            value={keineAntwort.length}
             sub={
-              noReplyOverdue.length > 0
-                ? `${noReplyOverdue.length} past deadline`
-                : 'within SLA'
+              keineAntwortUeberfaellig.length > 0
+                ? `${keineAntwortUeberfaellig.length} Frist abgelaufen`
+                : 'Innerhalb der Frist'
             }
             variant={
-              noReplyOverdue.length > 0
+              keineAntwortUeberfaellig.length > 0
                 ? 'danger'
-                : noReplySent.length > 0
+                : keineAntwort.length > 0
                 ? 'warning'
                 : 'default'
             }
           />
           <KpiCard
-            label="Unresolved Past Deadline"
-            value={resolutionOverdue.length}
-            sub="reply sent but issue still open"
-            variant={resolutionOverdue.length > 0 ? 'warning' : 'default'}
+            label="Ungelöst nach Fristablauf"
+            value={loesungUeberfaellig.length}
+            sub="Antwort gesendet, Problem noch offen"
+            variant={loesungUeberfaellig.length > 0 ? 'warning' : 'default'}
           />
           <KpiCard
-            label="Customer Followed Up ×2+"
-            value={repeatFollowUps.length}
-            sub="chasing without resolution"
-            variant={repeatFollowUps.length > 0 ? 'warning' : 'default'}
+            label="Kunde hat ×2+ nachgefragt"
+            value={mehrfachNachgefragt.length}
+            sub="Ohne abschließende Lösung"
+            variant={mehrfachNachgefragt.length > 0 ? 'warning' : 'default'}
           />
           <KpiCard
-            label="Total Open"
-            value={openCases.length}
-            sub={`${allCases.filter((c) => c.status === 'RESOLVED').length} closed overall`}
+            label="Gesamt Offen"
+            value={offeneAnfragen.length}
+            sub={`${alleAnfragen.filter((c) => c.status === 'RESOLVED').length} abgeschlossen gesamt`}
             variant="default"
           />
         </div>
 
-        {/* ──────────────────────────────────────────────────────────────────
-            SECTION 1: Overdue — needs action now
-        ────────────────────────────────────────────────────────────────── */}
-        {(noReplyOverdue.length > 0 || resolutionOverdue.length > 0) && (
+        {/* ─────────────────────────────────────────────────────────────────
+            SEKTION 1: Überfällig — sofortiger Handlungsbedarf
+        ───────────────────────────────────────────────────────────────── */}
+        {(keineAntwortUeberfaellig.length > 0 || loesungUeberfaellig.length > 0) && (
           <div className="mb-8">
             <div className="flex items-center gap-2 mb-3">
               <AlertTriangle className="w-4 h-4 text-red-600" />
               <h2 className="text-sm font-bold text-red-700 uppercase tracking-wide">
-                Overdue — Action Required
+                Überfällig — Sofortiger Handlungsbedarf
               </h2>
             </div>
 
-            {/* No reply sent past SLA */}
-            {noReplyOverdue.length > 0 && (
+            {keineAntwortUeberfaellig.length > 0 && (
               <div className="mb-4 rounded-lg border-2 border-red-200 overflow-hidden">
                 <div className="px-5 py-3 bg-red-50 border-b border-red-100">
                   <p className="text-sm font-semibold text-red-800">
-                    No reply sent — first response deadline passed
+                    Keine Antwort gesendet — Erstantwortfrist abgelaufen
                   </p>
                   <p className="text-xs text-red-600 mt-0.5">
-                    These customers have received no response from your team.
-                    The longer you wait, the worse the relationship damage.
-                    Reply today.
+                    Diese Kunden haben keine einzige Antwort von Ihrem Team erhalten.
+                    Je länger Sie warten, desto größer der Schaden für die Kundenbeziehung.
+                    Antworten Sie noch heute.
                   </p>
                 </div>
-                <CaseTable
-                  cases={noReplyOverdue}
+                <AnfragenTabelle
+                  anfragen={keineAntwortUeberfaellig}
                   now={now}
-                  columns={['case', 'customer', 'subject', 'priority', 'waiting', 'owner']}
-                  waitingFrom="lastCustomerMessage"
-                  highlightWaiting
+                  spalten={['nummer', 'kunde', 'betreff', 'prioritaet', 'wartet', 'zustaendig']}
+                  warteVon="letzteKundenNachricht"
+                  warteHervorheben
                 />
               </div>
             )}
 
-            {/* Resolution overdue */}
-            {resolutionOverdue.length > 0 && (
+            {loesungUeberfaellig.length > 0 && (
               <div className="rounded-lg border-2 border-orange-200 overflow-hidden">
                 <div className="px-5 py-3 bg-orange-50 border-b border-orange-100">
                   <p className="text-sm font-semibold text-orange-800">
-                    Unresolved past deadline — resolution SLA exceeded
+                    Ungelöst nach Fristablauf — Lösungsfrist überschritten
                   </p>
                   <p className="text-xs text-orange-700 mt-0.5">
-                    A reply was sent, but these cases are still open past their
-                    resolution deadline. The customer is still waiting for the
-                    problem to be fixed.
+                    Eine Antwort wurde gesendet, aber diese Anfragen sind noch offen —
+                    die Lösungsfrist ist bereits abgelaufen. Der Kunde wartet weiterhin
+                    auf eine Problemlösung.
                   </p>
                 </div>
-                <CaseTable
-                  cases={resolutionOverdue}
+                <AnfragenTabelle
+                  anfragen={loesungUeberfaellig}
                   now={now}
-                  columns={['case', 'customer', 'subject', 'priority', 'openSince', 'owner']}
+                  spalten={['nummer', 'kunde', 'betreff', 'prioritaet', 'offenSeit', 'zustaendig']}
                 />
               </div>
             )}
           </div>
         )}
 
-        {/* ──────────────────────────────────────────────────────────────────
-            SECTION 2: Awaiting first reply (within SLA — clock running)
-        ────────────────────────────────────────────────────────────────── */}
-        {noReplyPending.length > 0 && (
+        {/* ─────────────────────────────────────────────────────────────────
+            SEKTION 2: Awaiting first reply (innerhalb Frist)
+        ───────────────────────────────────────────────────────────────── */}
+        {keineAntwortInFrist.length > 0 && (
           <div className="mb-8">
             <div className="flex items-center gap-2 mb-3">
               <Clock className="w-4 h-4 text-amber-600" />
               <h2 className="text-sm font-bold text-amber-700 uppercase tracking-wide">
-                Awaiting First Reply — SLA Clock Running
+                Noch keine Antwort — Frist läuft
               </h2>
             </div>
             <div className="rounded-lg border border-amber-200 overflow-hidden">
               <div className="px-5 py-3 bg-amber-50 border-b border-amber-100">
                 <p className="text-xs text-amber-700">
-                  No reply sent yet, still within SLA. Reply before the deadline
-                  below.
+                  Noch keine Antwort gesendet, aber innerhalb der SLA-Frist.
+                  Antworten Sie vor Fristablauf.
                 </p>
               </div>
-              <CaseTable
-                cases={noReplyPending}
+              <AnfragenTabelle
+                anfragen={keineAntwortInFrist}
                 now={now}
-                columns={['case', 'customer', 'subject', 'priority', 'slaDeadline', 'owner']}
+                spalten={['nummer', 'kunde', 'betreff', 'prioritaet', 'fristEnde', 'zustaendig']}
               />
             </div>
           </div>
         )}
 
-        {/* ──────────────────────────────────────────────────────────────────
-            SECTION 3: Worth watching
-        ────────────────────────────────────────────────────────────────── */}
-        {(repeatFollowUps.length > 0 || teamQuiet.length > 0) && (
+        {/* ─────────────────────────────────────────────────────────────────
+            SEKTION 3: Beobachten
+        ───────────────────────────────────────────────────────────────── */}
+        {(mehrfachNachgefragt.length > 0 || teamStumm.length > 0) && (
           <div className="mb-8">
             <div className="flex items-center gap-2 mb-3">
               <RefreshCw className="w-4 h-4 text-slate-500" />
               <h2 className="text-sm font-bold text-slate-600 uppercase tracking-wide">
-                Worth Watching
+                Im Blick behalten
               </h2>
             </div>
             <div className="grid grid-cols-2 gap-4">
-              {repeatFollowUps.length > 0 && (
+              {mehrfachNachgefragt.length > 0 && (
                 <div className="rounded-lg border border-gray-200 overflow-hidden">
                   <div className="px-5 py-3 bg-gray-50 border-b border-gray-100">
-                    <p className="text-sm font-semibold text-slate-700">
-                      Customer chased ×2 or more
-                    </p>
+                    <p className="text-sm font-semibold text-slate-700">Kunde hat ×2+ nachgefragt</p>
                     <p className="text-xs text-slate-500 mt-0.5">
-                      Customer sent multiple follow-ups without a final
-                      resolution.
+                      Kunde hat mehrere Nachrichten ohne abschließende Lösung gesendet.
                     </p>
                   </div>
-                  <CaseTable
-                    cases={repeatFollowUps}
+                  <AnfragenTabelle
+                    anfragen={mehrfachNachgefragt}
                     now={now}
-                    columns={['case', 'customer', 'priority', 'followUps', 'owner']}
-                    compact
+                    spalten={['nummer', 'kunde', 'prioritaet', 'nachfragen', 'zustaendig']}
+                    kompakt
                   />
                 </div>
               )}
-              {teamQuiet.length > 0 && (
+              {teamStumm.length > 0 && (
                 <div className="rounded-lg border border-gray-200 overflow-hidden">
                   <div className="px-5 py-3 bg-gray-50 border-b border-gray-100">
-                    <p className="text-sm font-semibold text-slate-700">
-                      No internal update in 48+ hours
-                    </p>
+                    <p className="text-sm font-semibold text-slate-700">Kein internes Update seit 48h+</p>
                     <p className="text-xs text-slate-500 mt-0.5">
-                      Your team replied but hasn't touched these since.
+                      Ihr Team hat geantwortet, aber diese Anfragen seitdem nicht mehr angefasst.
                     </p>
                   </div>
-                  <CaseTable
-                    cases={teamQuiet}
+                  <AnfragenTabelle
+                    anfragen={teamStumm}
                     now={now}
-                    columns={['case', 'customer', 'priority', 'lastUpdate', 'owner']}
-                    compact
+                    spalten={['nummer', 'kunde', 'prioritaet', 'letztesUpdate', 'zustaendig']}
+                    kompakt
                   />
                 </div>
               )}
@@ -306,49 +283,45 @@ export default async function TeamLeadPage() {
           </div>
         )}
 
-        {/* ──────────────────────────────────────────────────────────────────
-            SECTION 4: All open cases
-        ────────────────────────────────────────────────────────────────── */}
+        {/* ─────────────────────────────────────────────────────────────────
+            SEKTION 4: Alle offenen Anfragen
+        ───────────────────────────────────────────────────────────────── */}
         <div className="mb-8">
           <div className="flex items-center gap-2 mb-3">
             <CheckSquare className="w-4 h-4 text-slate-400" />
             <h2 className="text-sm font-bold text-slate-500 uppercase tracking-wide">
-              All Open Cases
+              Alle offenen Anfragen
             </h2>
           </div>
           <div className="bg-white rounded-lg border border-gray-200 overflow-hidden">
-            {openCases.length === 0 ? (
+            {offeneAnfragen.length === 0 ? (
               <div className="px-6 py-10 text-center text-sm text-slate-400">
-                No open cases. All clear.
+                Keine offenen Anfragen. Alles abgearbeitet.
               </div>
             ) : (
               <table className="w-full text-sm">
                 <thead>
                   <tr className="border-b border-gray-100 bg-gray-50/50">
-                    <th className="px-5 py-3 text-left text-xs font-semibold text-gray-500 uppercase tracking-wider">Case</th>
-                    <th className="px-4 py-3 text-left text-xs font-semibold text-gray-500 uppercase tracking-wider">Customer</th>
-                    <th className="px-4 py-3 text-left text-xs font-semibold text-gray-500 uppercase tracking-wider">Subject</th>
-                    <th className="px-4 py-3 text-left text-xs font-semibold text-gray-500 uppercase tracking-wider">Priority</th>
+                    <th className="px-5 py-3 text-left text-xs font-semibold text-gray-500 uppercase tracking-wider">Nr.</th>
+                    <th className="px-4 py-3 text-left text-xs font-semibold text-gray-500 uppercase tracking-wider">Kunde</th>
+                    <th className="px-4 py-3 text-left text-xs font-semibold text-gray-500 uppercase tracking-wider">Betreff</th>
+                    <th className="px-4 py-3 text-left text-xs font-semibold text-gray-500 uppercase tracking-wider">Priorität</th>
                     <th className="px-4 py-3 text-left text-xs font-semibold text-gray-500 uppercase tracking-wider">Status</th>
-                    <th className="px-4 py-3 text-left text-xs font-semibold text-gray-500 uppercase tracking-wider">Opened</th>
-                    <th className="px-4 py-3 text-left text-xs font-semibold text-gray-500 uppercase tracking-wider">Last Customer Message</th>
-                    <th className="px-4 py-3 text-left text-xs font-semibold text-gray-500 uppercase tracking-wider">Owner</th>
+                    <th className="px-4 py-3 text-left text-xs font-semibold text-gray-500 uppercase tracking-wider">Eröffnet</th>
+                    <th className="px-4 py-3 text-left text-xs font-semibold text-gray-500 uppercase tracking-wider">Letzte Kunden-Nachricht</th>
+                    <th className="px-4 py-3 text-left text-xs font-semibold text-gray-500 uppercase tracking-wider">Zuständig</th>
                   </tr>
                 </thead>
                 <tbody>
-                  {openCases.map((c) => {
-                    const isNoReply = !c.firstResponseAt
-                    const isOverdue = c.isOverdue
+                  {offeneAnfragen.map((c) => {
+                    const isKeineAntwort = !c.firstResponseAt
                     return (
                       <tr
                         key={c.id}
                         className={cn(
                           'border-b border-gray-50 last:border-0 hover:bg-gray-50',
-                          isNoReply && isOverdue
-                            ? 'bg-red-50/20'
-                            : isOverdue
-                            ? 'bg-amber-50/20'
-                            : ''
+                          isKeineAntwort && c.isOverdue ? 'bg-red-50/20' :
+                          c.isOverdue ? 'bg-amber-50/20' : ''
                         )}
                       >
                         <td className="px-5 py-3">
@@ -375,41 +348,41 @@ export default async function TeamLeadPage() {
           </div>
         </div>
 
-        {/* ──────────────────────────────────────────────────────────────────
-            SECTION 5: By team member
-        ────────────────────────────────────────────────────────────────── */}
-        {ownerRows.length > 0 && (
+        {/* ─────────────────────────────────────────────────────────────────
+            SEKTION 5: Nach Mitarbeiter
+        ───────────────────────────────────────────────────────────────── */}
+        {mitarbeiterZeilen.length > 0 && (
           <div>
             <div className="flex items-center gap-2 mb-3">
               <Users className="w-4 h-4 text-slate-400" />
               <h2 className="text-sm font-bold text-slate-500 uppercase tracking-wide">
-                By Team Member
+                Nach Mitarbeiter
               </h2>
             </div>
             <div className="bg-white rounded-lg border border-gray-200">
               <table className="w-full text-sm">
                 <thead>
                   <tr className="border-b border-gray-100 bg-gray-50/50">
-                    <th className="px-6 py-3 text-left text-xs font-semibold text-gray-500 uppercase tracking-wider">Team Member</th>
-                    <th className="px-4 py-3 text-right text-xs font-semibold text-gray-500 uppercase tracking-wider">Open</th>
-                    <th className="px-4 py-3 text-right text-xs font-semibold text-gray-500 uppercase tracking-wider">No Reply Sent</th>
-                    <th className="px-4 py-3 text-right text-xs font-semibold text-gray-500 uppercase tracking-wider">Quiet {'>'}48h</th>
-                    <th className="px-4 py-3 text-right text-xs font-semibold text-gray-500 uppercase tracking-wider">Overdue</th>
+                    <th className="px-6 py-3 text-left text-xs font-semibold text-gray-500 uppercase tracking-wider">Mitarbeiter</th>
+                    <th className="px-4 py-3 text-right text-xs font-semibold text-gray-500 uppercase tracking-wider">Offen</th>
+                    <th className="px-4 py-3 text-right text-xs font-semibold text-gray-500 uppercase tracking-wider">Keine Antwort</th>
+                    <th className="px-4 py-3 text-right text-xs font-semibold text-gray-500 uppercase tracking-wider">Stumm {'>'}48h</th>
+                    <th className="px-4 py-3 text-right text-xs font-semibold text-gray-500 uppercase tracking-wider">Überfällig</th>
                   </tr>
                 </thead>
                 <tbody>
-                  {ownerRows.map(([name, data]) => (
+                  {mitarbeiterZeilen.map(([name, data]) => (
                     <tr key={name} className="border-b border-gray-50 last:border-0 hover:bg-gray-50">
                       <td className="px-6 py-3 font-medium text-slate-800">{name}</td>
-                      <td className="px-4 py-3 text-right text-slate-600">{data.total}</td>
+                      <td className="px-4 py-3 text-right text-slate-600">{data.gesamt}</td>
                       <td className="px-4 py-3 text-right">
-                        <span className={data.noReply > 0 ? 'font-bold text-red-600' : 'text-slate-400'}>{data.noReply}</span>
+                        <span className={data.keineAntwort > 0 ? 'font-bold text-red-600' : 'text-slate-400'}>{data.keineAntwort}</span>
                       </td>
                       <td className="px-4 py-3 text-right">
-                        <span className={data.quiet > 0 ? 'font-semibold text-amber-600' : 'text-slate-400'}>{data.quiet}</span>
+                        <span className={data.stumm > 0 ? 'font-semibold text-amber-600' : 'text-slate-400'}>{data.stumm}</span>
                       </td>
                       <td className="px-4 py-3 text-right">
-                        <span className={data.overdue > 0 ? 'font-semibold text-red-600' : 'text-slate-400'}>{data.overdue}</span>
+                        <span className={data.ueberfaellig > 0 ? 'font-semibold text-red-600' : 'text-slate-400'}>{data.ueberfaellig}</span>
                       </td>
                     </tr>
                   ))}
@@ -423,167 +396,124 @@ export default async function TeamLeadPage() {
   )
 }
 
-// ── Reusable case table ────────────────────────────────────────────────────
+// ── Wiederverwendbare Anfragentabelle ─────────────────────────────────────────
 
-type Column =
-  | 'case'
-  | 'customer'
-  | 'subject'
-  | 'priority'
-  | 'waiting'
-  | 'openSince'
-  | 'slaDeadline'
-  | 'followUps'
-  | 'lastUpdate'
-  | 'owner'
-  | 'status'
+type Spalte =
+  | 'nummer' | 'kunde' | 'betreff' | 'prioritaet'
+  | 'wartet' | 'offenSeit' | 'fristEnde'
+  | 'nachfragen' | 'letztesUpdate' | 'zustaendig' | 'status'
 
-function CaseTable({
-  cases,
+function AnfragenTabelle({
+  anfragen,
   now,
-  columns,
-  waitingFrom,
-  highlightWaiting,
-  compact,
+  spalten,
+  warteVon,
+  warteHervorheben,
+  kompakt,
 }: {
-  cases: Awaited<ReturnType<typeof prisma.case.findMany>>
+  anfragen: Awaited<ReturnType<typeof prisma.case.findMany>>
   now: Date
-  columns: Column[]
-  waitingFrom?: 'lastCustomerMessage' | 'openedAt'
-  highlightWaiting?: boolean
-  compact?: boolean
+  spalten: Spalte[]
+  warteVon?: 'letzteKundenNachricht' | 'eroeffnung'
+  warteHervorheben?: boolean
+  kompakt?: boolean
 }) {
-  const cellPad = compact ? 'px-4 py-2' : 'px-4 py-3'
+  const pad = kompakt ? 'px-4 py-2' : 'px-4 py-3'
+
+  const kopf: Partial<Record<Spalte, string>> = {
+    nummer:      'Nr.',
+    kunde:       'Kunde',
+    betreff:     'Betreff',
+    prioritaet:  'Priorität',
+    wartet:      'Wartet seit',
+    offenSeit:   'Offen seit',
+    fristEnde:   'SLA-Frist',
+    nachfragen:  'Nachfragen',
+    letztesUpdate: 'Letztes Update',
+    zustaendig:  'Zuständig',
+    status:      'Status',
+  }
 
   return (
     <table className="w-full text-sm">
       <thead>
         <tr className="border-b border-gray-100 bg-gray-50/30">
-          {columns.includes('case') && (
-            <th className={`${cellPad} text-left text-xs font-semibold text-gray-400 uppercase tracking-wider`}>Case</th>
-          )}
-          {columns.includes('customer') && (
-            <th className={`${cellPad} text-left text-xs font-semibold text-gray-400 uppercase tracking-wider`}>Customer</th>
-          )}
-          {columns.includes('subject') && (
-            <th className={`${cellPad} text-left text-xs font-semibold text-gray-400 uppercase tracking-wider`}>Subject</th>
-          )}
-          {columns.includes('priority') && (
-            <th className={`${cellPad} text-left text-xs font-semibold text-gray-400 uppercase tracking-wider`}>Priority</th>
-          )}
-          {columns.includes('waiting') && (
-            <th className={`${cellPad} text-left text-xs font-semibold text-gray-400 uppercase tracking-wider`}>Waiting</th>
-          )}
-          {columns.includes('openSince') && (
-            <th className={`${cellPad} text-left text-xs font-semibold text-gray-400 uppercase tracking-wider`}>Open for</th>
-          )}
-          {columns.includes('slaDeadline') && (
-            <th className={`${cellPad} text-left text-xs font-semibold text-gray-400 uppercase tracking-wider`}>SLA Deadline</th>
-          )}
-          {columns.includes('followUps') && (
-            <th className={`${cellPad} text-right text-xs font-semibold text-gray-400 uppercase tracking-wider`}>Follow-ups</th>
-          )}
-          {columns.includes('lastUpdate') && (
-            <th className={`${cellPad} text-left text-xs font-semibold text-gray-400 uppercase tracking-wider`}>Last Update</th>
-          )}
-          {columns.includes('status') && (
-            <th className={`${cellPad} text-left text-xs font-semibold text-gray-400 uppercase tracking-wider`}>Status</th>
-          )}
-          {columns.includes('owner') && (
-            <th className={`${cellPad} text-left text-xs font-semibold text-gray-400 uppercase tracking-wider`}>Owner</th>
-          )}
+          {spalten.map((s) => (
+            <th
+              key={s}
+              className={`${pad} text-left text-xs font-semibold text-gray-400 uppercase tracking-wider`}
+            >
+              {kopf[s]}
+            </th>
+          ))}
         </tr>
       </thead>
       <tbody>
-        {cases.map((c) => {
-          const waitingMs =
-            waitingFrom === 'openedAt'
+        {anfragen.map((c) => {
+          const warteMs =
+            warteVon === 'eroeffnung'
               ? now.getTime() - c.openedAt.getTime()
               : now.getTime() - c.lastCustomerMessageAt.getTime()
-          const openMs = now.getTime() - c.openedAt.getTime()
-          const slaRemainMs =
-            c.slaFirstResponseHours * 3_600_000 -
-            (now.getTime() - c.openedAt.getTime())
-          const overdueSla = slaRemainMs < 0
+          const offenMs = now.getTime() - c.openedAt.getTime()
+          const fristRest = c.slaFirstResponseHours * 3_600_000 - offenMs
+          const fristUeberfaellig = fristRest < 0
 
           return (
-            <tr
-              key={c.id}
-              className="border-b border-gray-50 last:border-0 hover:bg-gray-50"
-            >
-              {columns.includes('case') && (
-                <td className={cellPad}>
-                  <Link
-                    href={`/cases/${c.id}`}
-                    className="font-mono text-xs font-semibold text-slate-700 hover:text-blue-600"
-                  >
+            <tr key={c.id} className="border-b border-gray-50 last:border-0 hover:bg-gray-50">
+              {spalten.includes('nummer') && (
+                <td className={pad}>
+                  <Link href={`/cases/${c.id}`} className="font-mono text-xs font-semibold text-slate-700 hover:text-blue-600">
                     {c.caseNumber}
                   </Link>
                 </td>
               )}
-              {columns.includes('customer') && (
-                <td className={`${cellPad} text-xs text-slate-700`}>{c.customerName}</td>
+              {spalten.includes('kunde') && (
+                <td className={`${pad} text-xs text-slate-700`}>{c.customerName}</td>
               )}
-              {columns.includes('subject') && (
-                <td className={`${cellPad} text-xs text-slate-600 max-w-[160px] truncate`}>{c.subject}</td>
+              {spalten.includes('betreff') && (
+                <td className={`${pad} text-xs text-slate-600 max-w-[160px] truncate`}>{c.subject}</td>
               )}
-              {columns.includes('priority') && (
-                <td className={cellPad}><PriorityBadge priority={c.priority} /></td>
+              {spalten.includes('prioritaet') && (
+                <td className={pad}><PriorityBadge priority={c.priority} /></td>
               )}
-              {columns.includes('waiting') && (
-                <td className={cellPad}>
-                  <span
-                    className={cn(
-                      'text-xs font-bold',
-                      highlightWaiting ? 'text-red-700' : 'text-amber-700'
-                    )}
-                  >
-                    {waitingLabel(waitingMs)}
+              {spalten.includes('wartet') && (
+                <td className={pad}>
+                  <span className={cn('text-xs font-bold', warteHervorheben ? 'text-red-700' : 'text-amber-700')}>
+                    {warteZeit(warteMs)}
                   </span>
                 </td>
               )}
-              {columns.includes('openSince') && (
-                <td className={cellPad}>
-                  <span className="text-xs font-semibold text-orange-700">
-                    {waitingLabel(openMs)}
+              {spalten.includes('offenSeit') && (
+                <td className={pad}>
+                  <span className="text-xs font-semibold text-orange-700">{warteZeit(offenMs)}</span>
+                </td>
+              )}
+              {spalten.includes('fristEnde') && (
+                <td className={pad}>
+                  <span className={cn('text-xs font-semibold', fristUeberfaellig ? 'text-red-600' : 'text-green-700')}>
+                    {fristUeberfaellig
+                      ? `Überfällig seit ${warteZeit(Math.abs(fristRest))}`
+                      : `Noch ${warteZeit(fristRest)}`}
                   </span>
                 </td>
               )}
-              {columns.includes('slaDeadline') && (
-                <td className={cellPad}>
-                  <span
-                    className={cn(
-                      'text-xs font-semibold',
-                      overdueSla ? 'text-red-600' : 'text-green-700'
-                    )}
-                  >
-                    {overdueSla
-                      ? `Overdue by ${waitingLabel(Math.abs(slaRemainMs))}`
-                      : `${waitingLabel(slaRemainMs)} left`}
-                  </span>
+              {spalten.includes('nachfragen') && (
+                <td className={`${pad} text-right`}>
+                  <span className="text-xs font-bold text-orange-700">×{c.repeatFollowUpCount}</span>
                 </td>
               )}
-              {columns.includes('followUps') && (
-                <td className={`${cellPad} text-right`}>
-                  <span className="text-xs font-bold text-orange-700">
-                    ×{c.repeatFollowUpCount}
-                  </span>
-                </td>
-              )}
-              {columns.includes('lastUpdate') && (
-                <td className={cellPad}>
+              {spalten.includes('letztesUpdate') && (
+                <td className={pad}>
                   <span className="text-xs text-amber-700 font-medium">
-                    {c.lastInternalUpdateAt
-                      ? waitingLabel(now.getTime() - c.lastInternalUpdateAt.getTime()) + ' ago'
-                      : waitingLabel(now.getTime() - c.openedAt.getTime()) + ' ago (opened)'}
+                    {warteZeit(now.getTime() - (c.lastInternalUpdateAt ?? c.openedAt).getTime())} her
                   </span>
                 </td>
               )}
-              {columns.includes('status') && (
-                <td className={cellPad}><StatusBadge status={c.status} /></td>
+              {spalten.includes('status') && (
+                <td className={pad}><StatusBadge status={c.status} /></td>
               )}
-              {columns.includes('owner') && (
-                <td className={`${cellPad} text-xs text-slate-500`}>
+              {spalten.includes('zustaendig') && (
+                <td className={`${pad} text-xs text-slate-500`}>
                   {c.assignedInternalOwnerName ?? '—'}
                 </td>
               )}

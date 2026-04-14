@@ -15,7 +15,7 @@ export function LogoutButton() {
       onClick={handleLogout}
       className="w-full text-left px-3 py-1.5 text-xs text-slate-500 hover:text-slate-300 hover:bg-slate-800 rounded-md transition-colors"
     >
-      Sign out
+      Abmelden
     </button>
   )
 }

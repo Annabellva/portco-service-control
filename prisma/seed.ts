@@ -582,7 +582,7 @@ async function main() {
       escalationLevel: 3,
       openedAt: d(20),
       firstResponseAt: null, // 20 days, ZERO reply. CRITICAL safety issue.
-      lastCustomerMessageAt: h(2),
+      lastCustomerMessageAt: h(6),
       lastInternalUpdateAt: null,
       repeatFollowUpCount: 6,
       slaFirstResponseHours: 2,

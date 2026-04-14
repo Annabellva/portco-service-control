@@ -1,12 +1,6 @@
 import Link from 'next/link'
 import { LogoutButton } from './logout-button'
-import {
-  LayoutDashboard,
-  List,
-  Settings,
-  Building2,
-  AlertTriangle,
-} from 'lucide-react'
+import { LayoutDashboard, List, Building2 } from 'lucide-react'
 import { cn } from '@/lib/utils'
 
 interface ShellProps {
@@ -72,20 +66,14 @@ export function Shell({ children, user, activePath }: ShellProps) {
               <NavLink
                 href="/hq"
                 icon={LayoutDashboard}
-                label="HQ Dashboard"
+                label="HQ-Übersicht"
                 active={activePath === '/hq'}
               />
               <NavLink
                 href="/cases"
                 icon={List}
-                label="All Cases"
+                label="Alle Anfragen"
                 active={activePath === '/cases'}
-              />
-              <NavLink
-                href="/admin/demo"
-                icon={Settings}
-                label="Demo Controls"
-                active={activePath === '/admin/demo'}
               />
             </>
           ) : (
@@ -93,13 +81,13 @@ export function Shell({ children, user, activePath }: ShellProps) {
               <NavLink
                 href="/team-lead"
                 icon={LayoutDashboard}
-                label="My Dashboard"
+                label="Mein Dashboard"
                 active={activePath === '/team-lead'}
               />
               <NavLink
                 href="/cases"
                 icon={List}
-                label="Cases"
+                label="Anfragen"
                 active={activePath === '/cases'}
               />
             </>
@@ -111,7 +99,7 @@ export function Shell({ children, user, activePath }: ShellProps) {
           <div className="mb-2 px-1">
             <p className="text-xs font-semibold text-white truncate">{user.name}</p>
             <p className="text-xs text-slate-400 truncate">
-              {isHQ ? 'HQ — All portcos' : user.portco?.name ?? 'Team Lead'}
+              {isHQ ? 'HQ — Alle Portcos' : user.portco?.name ?? 'Teamleitung'}
             </p>
           </div>
           <LogoutButton />

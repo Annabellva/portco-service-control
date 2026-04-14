@@ -2,23 +2,23 @@ import { cn } from '@/lib/utils'
 
 const CONFIG: Record<string, { label: string; className: string }> = {
   NEW: {
-    label: 'New',
+    label: 'Neu',
     className: 'bg-slate-100 text-slate-700 border border-slate-200',
   },
   AWAITING_FIRST_RESPONSE: {
-    label: 'No Reply Sent',
+    label: 'Keine Antwort',
     className: 'bg-red-100 text-red-800 border border-red-200',
   },
   IN_PROGRESS: {
-    label: 'In Progress',
+    label: 'In Bearbeitung',
     className: 'bg-blue-100 text-blue-800 border border-blue-200',
   },
   WAITING_ON_CUSTOMER: {
-    label: 'Waiting for Customer',
+    label: 'Wartet auf Kunden',
     className: 'bg-purple-100 text-purple-700 border border-purple-200',
   },
   RESOLVED: {
-    label: 'Closed',
+    label: 'Abgeschlossen',
     className: 'bg-emerald-100 text-emerald-800 border border-emerald-200',
   },
 }

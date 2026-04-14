@@ -5,7 +5,6 @@ import { prisma } from '@/lib/prisma'
 import { Shell } from '@/components/layout/shell'
 import { PriorityBadge } from '@/components/badges/priority-badge'
 import { StatusBadge } from '@/components/badges/status-badge'
-import { EscalationBadge } from '@/components/badges/escalation-badge'
 import { formatDateTime } from '@/lib/utils'
 import { cn } from '@/lib/utils'
 import { AlertCircle } from 'lucide-react'
@@ -22,41 +21,25 @@ export default async function CasesPage({
 
   const isHQ = user.role === 'HQ'
 
-  // Build where clause based on role and filters
   // eslint-disable-next-line @typescript-eslint/no-explicit-any
   const where: Record<string, any> = {}
 
-  if (!isHQ && user.portcoId) {
-    where.portcoId = user.portcoId
-  }
+  if (!isHQ && user.portcoId) where.portcoId = user.portcoId
+  if (searchParams.portcoId && isHQ) where.portcoId = parseInt(searchParams.portcoId)
+  if (searchParams.status)   where.status = searchParams.status
+  if (searchParams.priority) where.priority = searchParams.priority
 
-  if (searchParams.portcoId && isHQ) {
-    where.portcoId = parseInt(searchParams.portcoId)
-  }
-
-  if (searchParams.status) {
-    where.status = searchParams.status
-  }
-
-  if (searchParams.priority) {
-    where.priority = searchParams.priority
-  }
-
-  const cases = await prisma.case.findMany({
+  const anfragen = await prisma.case.findMany({
     where,
     include: { portco: true },
-    orderBy: [
-      { escalationLevel: 'desc' },
-      { priority: 'asc' },
-      { openedAt: 'asc' },
-    ],
+    orderBy: [{ isOverdue: 'desc' }, { priority: 'asc' }, { openedAt: 'asc' }],
   })
 
   const portcos = isHQ
     ? await prisma.portco.findMany({ orderBy: { name: 'asc' } })
     : []
 
-  const activePortco = searchParams.portcoId
+  const aktivesPortco = searchParams.portcoId
     ? portcos.find((p) => p.id === parseInt(searchParams.portcoId!))
     : null
 
@@ -67,27 +50,27 @@ export default async function CasesPage({
         <div className="mb-6 flex items-start justify-between">
           <div>
             <h1 className="text-xl font-bold text-slate-900">
-              {activePortco ? `${activePortco.name} — Cases` : 'All Cases'}
+              {aktivesPortco ? `${aktivesPortco.name} — Anfragen` : 'Alle Anfragen'}
             </h1>
             <p className="text-sm text-slate-500 mt-1">
-              {cases.length} case{cases.length !== 1 ? 's' : ''}
-              {activePortco ? ` for ${activePortco.name}` : ''}
+              {anfragen.length} Anfrage{anfragen.length !== 1 ? 'n' : ''}
+              {aktivesPortco ? ` für ${aktivesPortco.name}` : ''}
             </p>
           </div>
-          {activePortco && (
+          {aktivesPortco && (
             <Link
               href="/hq"
               className="text-xs text-slate-500 hover:text-slate-800 transition-colors"
             >
-              ← Back to HQ overview
+              ← Zurück zur HQ-Übersicht
             </Link>
           )}
         </div>
 
-        {/* Portco filter (HQ only) */}
-        {isHQ && portcos.length > 0 && !activePortco && (
+        {/* Portco-Filter (nur HQ) */}
+        {isHQ && portcos.length > 0 && !aktivesPortco && (
           <div className="mb-6 flex items-center gap-2 flex-wrap">
-            <span className="text-xs text-slate-500 font-medium">Filter portco:</span>
+            <span className="text-xs text-slate-500 font-medium">Portco filtern:</span>
             {portcos.map((p) => (
               <Link
                 key={p.id}
@@ -100,35 +83,33 @@ export default async function CasesPage({
           </div>
         )}
 
-        {/* Cases table */}
+        {/* Anfragentabelle */}
         <div className="bg-white rounded-lg border border-gray-200">
           <table className="w-full text-sm">
             <thead>
               <tr className="border-b border-gray-100 bg-gray-50/50">
-                <th className="px-5 py-3 text-left text-xs font-semibold text-gray-500 uppercase tracking-wider">Case #</th>
-                {isHQ && !activePortco && (
+                <th className="px-5 py-3 text-left text-xs font-semibold text-gray-500 uppercase tracking-wider">Nr.</th>
+                {isHQ && !aktivesPortco && (
                   <th className="px-4 py-3 text-left text-xs font-semibold text-gray-500 uppercase tracking-wider">Portco</th>
                 )}
-                <th className="px-4 py-3 text-left text-xs font-semibold text-gray-500 uppercase tracking-wider">Customer</th>
-                <th className="px-4 py-3 text-left text-xs font-semibold text-gray-500 uppercase tracking-wider">Subject</th>
-                <th className="px-4 py-3 text-left text-xs font-semibold text-gray-500 uppercase tracking-wider">Cat.</th>
-                <th className="px-4 py-3 text-left text-xs font-semibold text-gray-500 uppercase tracking-wider">Priority</th>
+                <th className="px-4 py-3 text-left text-xs font-semibold text-gray-500 uppercase tracking-wider">Kunde</th>
+                <th className="px-4 py-3 text-left text-xs font-semibold text-gray-500 uppercase tracking-wider">Betreff</th>
+                <th className="px-4 py-3 text-left text-xs font-semibold text-gray-500 uppercase tracking-wider">Kategorie</th>
+                <th className="px-4 py-3 text-left text-xs font-semibold text-gray-500 uppercase tracking-wider">Priorität</th>
                 <th className="px-4 py-3 text-left text-xs font-semibold text-gray-500 uppercase tracking-wider">Status</th>
-                <th className="px-4 py-3 text-left text-xs font-semibold text-gray-500 uppercase tracking-wider">Esc.</th>
-                <th className="px-4 py-3 text-left text-xs font-semibold text-gray-500 uppercase tracking-wider">Opened</th>
-                <th className="px-4 py-3 text-left text-xs font-semibold text-gray-500 uppercase tracking-wider">Last Msg</th>
-                <th className="px-4 py-3 text-left text-xs font-semibold text-gray-500 uppercase tracking-wider">Last Update</th>
-                <th className="px-4 py-3 text-center text-xs font-semibold text-gray-500 uppercase tracking-wider">OD</th>
+                <th className="px-4 py-3 text-left text-xs font-semibold text-gray-500 uppercase tracking-wider">Eröffnet</th>
+                <th className="px-4 py-3 text-left text-xs font-semibold text-gray-500 uppercase tracking-wider">Letzte Kunden-Msg</th>
+                <th className="px-4 py-3 text-left text-xs font-semibold text-gray-500 uppercase tracking-wider">Letztes Update</th>
+                <th className="px-4 py-3 text-center text-xs font-semibold text-gray-500 uppercase tracking-wider">ÜF</th>
               </tr>
             </thead>
             <tbody>
-              {cases.map((c) => (
+              {anfragen.map((c) => (
                 <tr
                   key={c.id}
                   className={cn(
                     'border-b border-gray-50 last:border-0 table-row-hover',
-                    c.escalationLevel >= 3 && 'bg-red-50/30',
-                    c.isOverdue && c.escalationLevel < 3 && 'bg-amber-50/20'
+                    c.isOverdue && 'bg-amber-50/20'
                   )}
                 >
                   <td className="px-5 py-3">
@@ -139,35 +120,22 @@ export default async function CasesPage({
                       {c.caseNumber}
                     </Link>
                   </td>
-                  {isHQ && !activePortco && (
+                  {isHQ && !aktivesPortco && (
                     <td className="px-4 py-3 text-xs text-slate-600">
                       {c.portco.name.split(' ')[0]}
                     </td>
                   )}
                   <td className="px-4 py-3 text-xs text-slate-700">{c.customerName}</td>
-                  <td className="px-4 py-3 text-xs text-slate-600 max-w-[200px] truncate">
-                    {c.subject}
-                  </td>
+                  <td className="px-4 py-3 text-xs text-slate-600 max-w-[200px] truncate">{c.subject}</td>
                   <td className="px-4 py-3 text-xs text-slate-500">{c.category}</td>
-                  <td className="px-4 py-3">
-                    <PriorityBadge priority={c.priority} />
-                  </td>
-                  <td className="px-4 py-3">
-                    <StatusBadge status={c.status} />
-                  </td>
-                  <td className="px-4 py-3">
-                    <EscalationBadge level={c.escalationLevel} />
-                  </td>
-                  <td className="px-4 py-3 text-xs text-slate-500 whitespace-nowrap">
-                    {formatDateTime(c.openedAt)}
-                  </td>
-                  <td className="px-4 py-3 text-xs text-slate-500 whitespace-nowrap">
-                    {formatDateTime(c.lastCustomerMessageAt)}
-                  </td>
+                  <td className="px-4 py-3"><PriorityBadge priority={c.priority} /></td>
+                  <td className="px-4 py-3"><StatusBadge status={c.status} /></td>
+                  <td className="px-4 py-3 text-xs text-slate-500 whitespace-nowrap">{formatDateTime(c.openedAt)}</td>
+                  <td className="px-4 py-3 text-xs text-slate-500 whitespace-nowrap">{formatDateTime(c.lastCustomerMessageAt)}</td>
                   <td className="px-4 py-3 text-xs text-slate-500 whitespace-nowrap">
                     {c.lastInternalUpdateAt
                       ? formatDateTime(c.lastInternalUpdateAt)
-                      : <span className="text-red-400">None</span>}
+                      : <span className="text-red-400">Kein Update</span>}
                   </td>
                   <td className="px-4 py-3 text-center">
                     {c.isOverdue ? (
@@ -178,13 +146,10 @@ export default async function CasesPage({
                   </td>
                 </tr>
               ))}
-              {cases.length === 0 && (
+              {anfragen.length === 0 && (
                 <tr>
-                  <td
-                    colSpan={12}
-                    className="px-6 py-10 text-center text-sm text-slate-400"
-                  >
-                    No cases found.
+                  <td colSpan={12} className="px-6 py-10 text-center text-sm text-slate-400">
+                    Keine Anfragen gefunden.
                   </td>
                 </tr>
               )}

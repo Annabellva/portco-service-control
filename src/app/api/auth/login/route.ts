@@ -1,18 +1,30 @@
 import { NextRequest, NextResponse } from 'next/server'
 import { prisma } from '@/lib/prisma'
 import { createSession } from '@/lib/auth'
+import { findCredential } from '@/lib/credentials'
 
 export async function POST(request: NextRequest) {
   const body = await request.json()
-  const { userId } = body
+  const { email, password } = body
 
-  if (!userId || typeof userId !== 'number') {
-    return NextResponse.json({ error: 'Invalid userId' }, { status: 400 })
+  if (!email || !password) {
+    return NextResponse.json(
+      { error: 'E-Mail und Passwort erforderlich' },
+      { status: 400 }
+    )
   }
 
-  const user = await prisma.user.findUnique({ where: { id: userId } })
+  const cred = findCredential(email, password)
+  if (!cred) {
+    return NextResponse.json(
+      { error: 'Ungültige Anmeldedaten' },
+      { status: 401 }
+    )
+  }
+
+  const user = await prisma.user.findUnique({ where: { id: cred.userId } })
   if (!user) {
-    return NextResponse.json({ error: 'User not found' }, { status: 404 })
+    return NextResponse.json({ error: 'Benutzer nicht gefunden' }, { status: 404 })
   }
 
   const sessionValue = createSession(user.id, user.role)
@@ -23,7 +35,7 @@ export async function POST(request: NextRequest) {
     httpOnly: true,
     secure: process.env.NODE_ENV === 'production',
     sameSite: 'lax',
-    maxAge: 60 * 60 * 24 * 7, // 7 days
+    maxAge: 60 * 60 * 24 * 7,
     path: '/',
   })
 

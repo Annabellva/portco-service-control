@@ -1,109 +1,125 @@
 'use client'
 
+import { useState } from 'react'
 import { useRouter } from 'next/navigation'
-import { Building2, Shield, UserCheck } from 'lucide-react'
-
-const DEMO_USERS = [
-  {
-    id: 1,
-    name: 'Sarah Klein',
-    role: 'HQ',
-    roleLabel: 'HQ — All Portcos',
-    description: 'Full access to all portcos, aggregated view, admin controls.',
-    icon: Shield,
-    color: 'border-slate-300 hover:border-slate-900 hover:bg-slate-50',
-    badge: 'bg-slate-100 text-slate-700',
-  },
-  {
-    id: 2,
-    name: 'Lars Müller',
-    role: 'TEAM_LEAD',
-    roleLabel: 'Team Lead — Hamburg',
-    description: 'Hamburg Immobilien GmbH. Healthy portco with resolved cases.',
-    icon: UserCheck,
-    color: 'border-emerald-200 hover:border-emerald-500 hover:bg-emerald-50/50',
-    badge: 'bg-emerald-100 text-emerald-700',
-  },
-  {
-    id: 3,
-    name: 'Anna Schmidt',
-    role: 'TEAM_LEAD',
-    roleLabel: 'Team Lead — Berlin',
-    description: 'Berlin Residenz KG. Medium portco with unresolved escalations.',
-    icon: UserCheck,
-    color: 'border-amber-200 hover:border-amber-500 hover:bg-amber-50/50',
-    badge: 'bg-amber-100 text-amber-700',
-  },
-]
+import { Building2, Loader2 } from 'lucide-react'
 
 export default function LoginPage() {
   const router = useRouter()
+  const [email, setEmail] = useState('')
+  const [password, setPassword] = useState('')
+  const [error, setError] = useState('')
+  const [loading, setLoading] = useState(false)
 
-  async function login(userId: number) {
-    const res = await fetch('/api/auth/login', {
-      method: 'POST',
-      headers: { 'Content-Type': 'application/json' },
-      body: JSON.stringify({ userId }),
-    })
-    const data = await res.json()
-    if (data.redirect) {
+  async function handleSubmit(e: React.FormEvent) {
+    e.preventDefault()
+    setError('')
+    setLoading(true)
+
+    try {
+      const res = await fetch('/api/auth/login', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ email, password }),
+      })
+      const data = await res.json()
+
+      if (!res.ok) {
+        setError(data.error ?? 'Anmeldung fehlgeschlagen')
+        return
+      }
+
       router.push(data.redirect)
+    } catch {
+      setError('Verbindungsfehler. Bitte erneut versuchen.')
+    } finally {
+      setLoading(false)
     }
   }
 
   return (
     <div className="min-h-screen bg-slate-950 flex items-center justify-center p-6">
-      <div className="w-full max-w-lg">
-        {/* Header */}
+      <div className="w-full max-w-sm">
+        {/* Logo */}
         <div className="mb-10 text-center">
-          <div className="flex items-center justify-center gap-2 mb-4">
+          <div className="flex items-center justify-center mb-4">
             <Building2 className="w-7 h-7 text-slate-400" />
           </div>
           <h1 className="text-2xl font-bold text-white tracking-tight">
             Portco Service Control
           </h1>
           <p className="text-slate-400 text-sm mt-2">
-            Property management service operations platform
+            Serviceplattform für Immobilienportfolios
           </p>
-          <div className="mt-4 inline-flex items-center gap-2 px-3 py-1.5 bg-amber-900/40 border border-amber-700/40 rounded-md">
-            <span className="w-1.5 h-1.5 rounded-full bg-amber-400 animate-pulse" />
-            <span className="text-xs text-amber-300 font-medium">Demo mode — select a login below</span>
+        </div>
+
+        {/* Login form */}
+        <form onSubmit={handleSubmit} className="space-y-4">
+          <div>
+            <label
+              htmlFor="email"
+              className="block text-xs font-semibold text-slate-400 uppercase tracking-wider mb-1.5"
+            >
+              E-Mail
+            </label>
+            <input
+              id="email"
+              type="email"
+              autoComplete="email"
+              required
+              value={email}
+              onChange={(e) => setEmail(e.target.value)}
+              placeholder="ihre@email.de"
+              className="w-full px-3.5 py-2.5 bg-slate-900 border border-slate-700 rounded-lg text-white
+                         text-sm placeholder-slate-500 focus:outline-none focus:border-slate-500
+                         focus:ring-1 focus:ring-slate-500 transition-colors"
+            />
           </div>
-        </div>
 
-        {/* User cards */}
-        <div className="space-y-3">
-          {DEMO_USERS.map((u) => {
-            const Icon = u.icon
-            return (
-              <button
-                key={u.id}
-                onClick={() => login(u.id)}
-                className={`w-full text-left bg-white rounded-xl border-2 px-5 py-4 transition-all duration-150 cursor-pointer group ${u.color}`}
-              >
-                <div className="flex items-start justify-between">
-                  <div className="flex items-center gap-3">
-                    <div className="w-9 h-9 rounded-full bg-slate-100 flex items-center justify-center flex-shrink-0">
-                      <Icon className="w-4 h-4 text-slate-600" />
-                    </div>
-                    <div>
-                      <p className="text-sm font-semibold text-slate-900">{u.name}</p>
-                      <p className="text-xs text-slate-500 mt-0.5">{u.roleLabel}</p>
-                    </div>
-                  </div>
-                  <span className={`text-xs font-medium px-2 py-0.5 rounded ${u.badge}`}>
-                    {u.role}
-                  </span>
-                </div>
-                <p className="text-xs text-slate-500 mt-3 pl-12">{u.description}</p>
-              </button>
-            )
-          })}
-        </div>
+          <div>
+            <label
+              htmlFor="password"
+              className="block text-xs font-semibold text-slate-400 uppercase tracking-wider mb-1.5"
+            >
+              Passwort
+            </label>
+            <input
+              id="password"
+              type="password"
+              autoComplete="current-password"
+              required
+              value={password}
+              onChange={(e) => setPassword(e.target.value)}
+              placeholder="••••••••"
+              className="w-full px-3.5 py-2.5 bg-slate-900 border border-slate-700 rounded-lg text-white
+                         text-sm placeholder-slate-500 focus:outline-none focus:border-slate-500
+                         focus:ring-1 focus:ring-slate-500 transition-colors"
+            />
+          </div>
 
-        <p className="text-center text-xs text-slate-600 mt-8">
-          Demo environment — no real credentials required
-        </p>
+          {error && (
+            <p className="text-sm text-red-400 bg-red-950/50 border border-red-800 rounded-lg px-3.5 py-2.5">
+              {error}
+            </p>
+          )}
+
+          <button
+            type="submit"
+            disabled={loading}
+            className="w-full py-2.5 px-4 bg-white text-slate-900 font-semibold text-sm rounded-lg
+                       hover:bg-slate-100 transition-colors disabled:opacity-50 disabled:cursor-not-allowed
+                       flex items-center justify-center gap-2 mt-2"
+          >
+            {loading ? (
+              <>
+                <Loader2 className="w-4 h-4 animate-spin" />
+                Anmelden…
+              </>
+            ) : (
+              'Anmelden'
+            )}
+          </button>
+        </form>
       </div>
     </div>
   )
