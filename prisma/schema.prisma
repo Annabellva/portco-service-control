@@ -1,0 +1,107 @@
+generator client {
+  provider = "prisma-client-js"
+  output   = "../src/generated/prisma"
+}
+
+datasource db {
+  provider = "sqlite"
+  url      = env("DATABASE_URL")
+}
+
+model User {
+  id       Int    @id @default(autoincrement())
+  name     String
+  email    String @unique
+  role     String // HQ | TEAM_LEAD
+  portcoId Int?
+  portco   Portco? @relation(fields: [portcoId], references: [id])
+
+  @@map("users")
+}
+
+model Portco {
+  id             Int    @id @default(autoincrement())
+  name           String
+  slug           String @unique
+  casePrefix     String @default("XX")
+  teamLeadUserId Int?
+  inboundAlias   String @unique
+  status         String @default("ACTIVE") // ACTIVE | INACTIVE
+  users          User[]
+  cases          Case[]
+  metrics        PortcoMetricSnapshot[]
+
+  @@map("portcos")
+}
+
+model Case {
+  id                        Int       @id @default(autoincrement())
+  caseNumber                String    @unique
+  portcoId                  Int
+  teamLeadUserId            Int?
+  assignedInternalOwnerName String?
+  customerName              String
+  customerEmail             String
+  subject                   String
+  normalizedSubject         String
+  category                  String
+  priority                  String    // LOW | NORMAL | HIGH | CRITICAL
+  status                    String    // NEW | AWAITING_FIRST_RESPONSE | IN_PROGRESS | WAITING_ON_CUSTOMER | RESOLVED
+  escalationLevel           Int       @default(0)
+  openedAt                  DateTime
+  firstResponseAt           DateTime?
+  lastCustomerMessageAt     DateTime
+  lastInternalUpdateAt      DateTime?
+  resolvedAt                DateTime?
+  repeatFollowUpCount       Int       @default(0)
+  slaFirstResponseHours     Int
+  slaResolutionHours        Int
+  nextAction                String?
+  aiSummary                 String?
+  isOverdue                 Boolean   @default(false)
+  needsHQAttention          Boolean   @default(false)
+  portco                    Portco    @relation(fields: [portcoId], references: [id])
+  messages                  Message[]
+
+  @@map("cases")
+}
+
+model Message {
+  id                Int      @id @default(autoincrement())
+  caseId            Int
+  direction         String   // INBOUND | OUTBOUND
+  from              String
+  to                String
+  subject           String
+  bodyText          String
+  sentAt            DateTime
+  externalThreadKey String?
+  externalMessageId String?
+  case              Case     @relation(fields: [caseId], references: [id])
+
+  @@map("messages")
+}
+
+model PortcoMetricSnapshot {
+  id                    Int      @id @default(autoincrement())
+  portcoId              Int
+  capturedAt            DateTime @default(now())
+  openCaseCount         Int
+  criticalOpenCount     Int
+  overdueCount          Int
+  redFlagCount          Int
+  avgFirstResponseHours Float?
+  repeatFollowUpRate    Float
+  healthScore           Float
+  portco                Portco   @relation(fields: [portcoId], references: [id])
+
+  @@map("portco_metric_snapshots")
+}
+
+model DemoSettings {
+  id               Int       @id @default(1)
+  clockOffset      Int       @default(0)
+  lastSchedulerRun DateTime?
+
+  @@map("demo_settings")
+}
